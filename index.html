@@ -4,6 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WebRTC Video Call</title>
+    <style>
+        video {
+            width: 45%;
+            height: auto;
+            margin: 10px;
+        }
+    </style>
 </head>
 <body>
     <h2>WebRTC Video Call</h2>
@@ -14,7 +21,7 @@
     </div>
 
     <script>
-        const signalingServer = new WebSocket('wss://ae1e-2804-7f0-b443-6dd5-1d5a-a2db-2106-2b26.ngrok-free.app/');
+        const signalingServer = new WebSocket('wss://ae1e-2804-7f0-b443-6dd5-1d5a-a2db-2106-2b26.ngrok-free.app');
         let localStream, remoteStream, peerConnection;
 
         const configuration = {
@@ -26,6 +33,7 @@
         const localVideo = document.getElementById('localVideo');
         const remoteVideo = document.getElementById('remoteVideo');
 
+        // Quando receber mensagens do servidor de sinalização
         signalingServer.onmessage = async (message) => {
             const data = JSON.parse(message.data);
 
@@ -38,39 +46,59 @@
             }
         };
 
+        signalingServer.onopen = () => {
+            console.log('Conectado ao servidor de sinalização');
+        };
+
+        signalingServer.onerror = (error) => {
+            console.error('WebSocket Error: ', error);
+        };
+
+        signalingServer.onclose = () => {
+            console.log('Conexão WebSocket fechada');
+        };
+
         // Captura a mídia local (vídeo e áudio)
         navigator.mediaDevices.getUserMedia({ video: true, audio: true })
             .then(stream => {
                 localStream = stream;
                 localVideo.srcObject = stream;
 
-                // Cria uma conexão peer
-                peerConnection = new RTCPeerConnection(configuration);
+                // Cria a conexão peer
+                createPeerConnection();
 
                 // Adiciona o fluxo local à conexão peer
                 stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
-
-                // Envia os candidatos ICE para o outro peer
-                peerConnection.onicecandidate = event => {
-                    if (event.candidate) {
-                        signalingServer.send(JSON.stringify({ iceCandidate: event.candidate }));
-                    }
-                };
-
-                // Quando o fluxo remoto for recebido
-                peerConnection.ontrack = event => {
-                    if (!remoteStream) {
-                        remoteStream = new MediaStream();
-                        remoteVideo.srcObject = remoteStream;
-                    }
-                    remoteStream.addTrack(event.track);
-                };
+            })
+            .catch(error => {
+                console.error('Erro ao acessar a câmera e microfone', error);
             });
+
+        // Função para criar a conexão Peer
+        function createPeerConnection() {
+            peerConnection = new RTCPeerConnection(configuration);
+
+            // Envia candidatos ICE para o outro peer
+            peerConnection.onicecandidate = event => {
+                if (event.candidate) {
+                    signalingServer.send(JSON.stringify({ iceCandidate: event.candidate }));
+                }
+            };
+
+            // Quando o fluxo remoto for recebido
+            peerConnection.ontrack = event => {
+                if (!remoteStream) {
+                    remoteStream = new MediaStream();
+                    remoteVideo.srcObject = remoteStream;
+                }
+                remoteStream.addTrack(event.track);
+            };
+        }
 
         // Função para lidar com ofertas
         async function handleOffer(offer) {
             if (!peerConnection) {
-                peerConnection = new RTCPeerConnection(configuration);
+                createPeerConnection();
             }
 
             await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
